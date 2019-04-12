@@ -1,10 +1,16 @@
 package me.aluceps.practicemediastore
 
+import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.databinding.DataBindingUtil
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.support.v4.app.ActivityCompat
+import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.widget.ImageView
@@ -21,7 +27,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding.album.setOnClickListener {
             Log.d("###", "action: OnClick")
-            openAlbum()
+            if (checkPermission()) {
+                openAlbum()
+            }
         }
     }
 
@@ -51,12 +59,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        when (requestCode) {
+            REQUEST_READ_EXTERNAL_STRAGE -> {
+                if (grantResults.first() == PackageManager.PERMISSION_GRANTED) {
+                    openAlbum()
+                } else {
+                    // denied
+                }
+            }
+            else ->
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        }
+    }
+
     override fun onDestroy() {
         binding.imageView.setImageBitmap(null)
         super.onDestroy()
     }
 
+    private fun Context.checkPermission(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.READ_EXTERNAL_STORAGE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                val activity = this as Activity
+                if (ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity,
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                    )
+                ) {
+                } else {
+                    ActivityCompat.requestPermissions(
+                        activity,
+                        listOf(Manifest.permission.READ_EXTERNAL_STORAGE).toTypedArray(),
+                        REQUEST_READ_EXTERNAL_STRAGE
+                    )
+                }
+                false
+            } else {
+                true
+            }
+        } else {
+            true
+        }
+
     companion object {
-        private const val REQUEST_GALLERY = 0x0001
+        private const val REQUEST_READ_EXTERNAL_STRAGE = 0x0001
+        private const val REQUEST_GALLERY = 0x0002
     }
 }
