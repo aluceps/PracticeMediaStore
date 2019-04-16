@@ -2,7 +2,6 @@ package me.aluceps.practicemediastore
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.databinding.DataBindingUtil
@@ -12,10 +11,30 @@ import android.provider.MediaStore
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
-import android.util.Log
 import android.widget.ImageView
+import android.widget.Toast
 import me.aluceps.practicemediastore.databinding.ActivityMainBinding
 import java.io.IOException
+
+sealed class Permission {
+    object ReadExternalStorage : Permission() {
+        override val manifest: String = Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
+    abstract val manifest: String
+}
+
+sealed class Request {
+    object ReadExternalStorage : Request() {
+        override val code: Int = 0x001
+    }
+
+    object Gallery : Request() {
+        override val code: Int = 0x002
+    }
+
+    abstract val code: Int
+}
 
 class MainActivity : AppCompatActivity() {
 
@@ -26,7 +45,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding.album.setOnClickListener {
-            Log.d("###", "action: OnClick")
             if (checkPermission()) {
                 openAlbum()
             }
@@ -37,18 +55,16 @@ class MainActivity : AppCompatActivity() {
         Intent(Intent.ACTION_GET_CONTENT, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).also { album ->
             album.addCategory(Intent.CATEGORY_OPENABLE)
             album.type = "*/*"
-            album.putExtra(Intent.EXTRA_MIME_TYPES, arrayListOf("image/*", "video/*"))
-            startActivityForResult(album, REQUEST_GALLERY)
+            album.putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
+            startActivityForResult(album, Request.Gallery.code)
         }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (resultCode != Activity.RESULT_OK || data == null) return
-        if (requestCode == REQUEST_GALLERY) {
-            val uri = data.data
-            Log.d("###", "result: uri=$uri")
+        if (requestCode == Request.Gallery.code) {
             try {
-                val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, uri)
+                val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, data.data)
                 binding.imageView.apply {
                     scaleType = ImageView.ScaleType.CENTER_CROP
                     setImageBitmap(bitmap)
@@ -61,15 +77,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         when (requestCode) {
-            REQUEST_READ_EXTERNAL_STRAGE -> {
-                if (grantResults.first() == PackageManager.PERMISSION_GRANTED) {
+            Request.ReadExternalStorage.code -> {
+                if (grantResults.isNotEmpty() && grantResults.first() == PackageManager.PERMISSION_GRANTED) {
                     openAlbum()
                 } else {
-                    // denied
+                    Toast.makeText(this, "Permission denied...", Toast.LENGTH_SHORT).show()
                 }
             }
-            else ->
+            else -> {
                 super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+            }
         }
     }
 
@@ -78,24 +95,13 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun Context.checkPermission(): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(
-                    this, Manifest.permission.READ_EXTERNAL_STORAGE
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                val activity = this as Activity
-                if (ActivityCompat.shouldShowRequestPermissionRationale(
-                        activity,
-                        Manifest.permission.READ_EXTERNAL_STORAGE
-                    )
-                ) {
+    private fun checkPermission(): Boolean =
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
+            if (selfPermissionDenied) {
+                if (shouldShowRequestPermission) {
+                    Toast.makeText(this, "Requested permission is already disabled...", Toast.LENGTH_SHORT).show()
                 } else {
-                    ActivityCompat.requestPermissions(
-                        activity,
-                        listOf(Manifest.permission.READ_EXTERNAL_STORAGE).toTypedArray(),
-                        REQUEST_READ_EXTERNAL_STRAGE
-                    )
+                    requestPermissionReadExternalStorage()
                 }
                 false
             } else {
@@ -105,8 +111,23 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-    companion object {
-        private const val REQUEST_READ_EXTERNAL_STRAGE = 0x0001
-        private const val REQUEST_GALLERY = 0x0002
+    private val selfPermissionDenied
+        get() = ContextCompat.checkSelfPermission(
+            this,
+            Permission.ReadExternalStorage.manifest
+        ) != PackageManager.PERMISSION_GRANTED
+
+    private val shouldShowRequestPermission
+        get() = ActivityCompat.shouldShowRequestPermissionRationale(
+            this,
+            Permission.ReadExternalStorage.manifest
+        )
+
+    private fun requestPermissionReadExternalStorage() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Permission.ReadExternalStorage.manifest),
+            Request.ReadExternalStorage.code
+        )
     }
 }
